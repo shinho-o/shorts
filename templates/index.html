@@ -205,7 +205,7 @@
         <div class="add-form">
             <h3 style="color:var(--neon);margin-bottom:12px;">+ 채널 추가</h3>
             <form action="/add_channel" method="POST" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
-                <div style="flex:1;min-width:200px;"><label>채널명</label><input name="channel" placeholder="채널 이름" required></div>
+                <div style="flex:1;min-width:200px;"><label>채널 URL / @핸들 / 이름</label><input name="channel" placeholder="@채널핸들 또는 YouTube URL" required></div>
                 <div style="min-width:150px;">
                     <label>카테고리</label>
                     <select name="category" style="width:100%;">
@@ -224,19 +224,36 @@
 
         {% if saved_channels %}
         <h4 style="color:var(--neon);margin-bottom:12px;">저장한 채널</h4>
+        <div class="grid">
         {% for ch in saved_channels %}
         <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:start;">
-                <div class="card-title">{{ ch.name }}</div>
-                <button class="btn btn-sm btn-d" onclick="removeChannel('{{ ch.name }}')">삭제</button>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+                {% if ch.thumbnail %}
+                <img src="{{ ch.thumbnail }}" style="width:48px;height:48px;border-radius:50%;border:1px solid var(--neon);">
+                {% endif %}
+                <div>
+                    <div class="card-title" style="margin-bottom:2px;">{{ ch.name }}</div>
+                    <span class="tag tag-g">{{ ch.category }}</span>
+                </div>
             </div>
+            {% if ch.subscribers %}
             <div class="meta">
-                <span class="tag tag-g">{{ ch.category }}</span>
+                <span><b>{{ "{:,}".format(ch.subscribers) }}</b> 구독자</span>
+                <span><b>{{ "{:,}".format(ch.get('total_videos', 0)) }}</b> 영상</span>
                 <span>{{ ch.date_added }}</span>
             </div>
-            {% if ch.note %}<div style="font-size:13px;margin-top:4px;">{{ ch.note }}</div>{% endif %}
+            {% endif %}
+            {% if ch.note %}<div style="font-size:13px;margin-top:4px;color:var(--dim);font-style:italic;">{{ ch.note }}</div>{% endif %}
+            <div style="margin-top:10px;display:flex;gap:6px;">
+                {% if ch.channel_id %}
+                <a href="/channel/{{ ch.channel_id }}" class="btn btn-sm btn-p">영상 보기</a>
+                <a href="https://youtube.com/channel/{{ ch.channel_id }}" target="_blank" class="btn btn-sm">YouTube</a>
+                {% endif %}
+                <button class="btn btn-sm btn-d" onclick="removeChannel('{{ ch.name }}')">삭제</button>
+            </div>
         </div>
         {% endfor %}
+        </div>
         {% endif %}
 
         <h4 style="color:var(--neon);margin:20px 0 12px;">수집 데이터 기반 채널</h4>

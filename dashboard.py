@@ -40,6 +40,11 @@ def save_db(db):
     DB_PATH.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _yt():
+    from googleapiclient.discovery import build
+    return build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+
+
 def fetch_youtube_info(url):
     if not YOUTUBE_API_KEY:
         return None
@@ -51,8 +56,7 @@ def fetch_youtube_info(url):
             break
     if not video_id:
         return None
-    from googleapiclient.discovery import build
-    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    youtube = _yt()
     resp = youtube.videos().list(part="snippet,statistics", id=video_id).execute()
     items = resp.get("items", [])
     if not items:
@@ -68,6 +72,91 @@ def fetch_youtube_info(url):
         "comments": int(s.get("commentCount", 0)),
         "published": item["snippet"]["publishedAt"][:10],
     }
+
+
+def resolve_channel_id(input_str):
+    """YouTube 채널 URL, @handle, 또는 채널명 → channel_id + 채널 정보"""
+    if not YOUTUBE_API_KEY:
+        return None
+    youtube = _yt()
+
+    channel_id = None
+
+    # @handle or URL with @
+    m = re.search(r"@([\w.-]+)", input_str)
+    if m:
+        handle = m.group(1)
+        resp = youtube.search().list(part="snippet", q=f"@{handle}", type="channel", maxResults=1).execute()
+        items = resp.get("items", [])
+        if items:
+            channel_id = items[0]["snippet"]["channelId"]
+
+    # /channel/UCxxxx URL
+    if not channel_id:
+        m = re.search(r"channel/(UC[\w-]+)", input_str)
+        if m:
+            channel_id = m.group(1)
+
+    # /c/name or plain search
+    if not channel_id:
+        resp = youtube.search().list(part="snippet", q=input_str, type="channel", maxResults=1).execute()
+        items = resp.get("items", [])
+        if items:
+            channel_id = items[0]["snippet"]["channelId"]
+
+    if not channel_id:
+        return None
+
+    # 채널 상세 정보
+    ch_resp = youtube.channels().list(part="snippet,statistics", id=channel_id).execute()
+    ch_items = ch_resp.get("items", [])
+    if not ch_items:
+        return None
+
+    ch = ch_items[0]
+    return {
+        "channel_id": channel_id,
+        "name": ch["snippet"]["title"],
+        "description": ch["snippet"].get("description", "")[:200],
+        "thumbnail": ch["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
+        "subscribers": int(ch["statistics"].get("subscriberCount", 0)),
+        "total_videos": int(ch["statistics"].get("videoCount", 0)),
+        "total_views": int(ch["statistics"].get("viewCount", 0)),
+    }
+
+
+def fetch_channel_videos(channel_id, max_results=12):
+    """채널의 최근 영상 가져오기 (통계 포함)"""
+    if not YOUTUBE_API_KEY:
+        return []
+    youtube = _yt()
+
+    resp = youtube.search().list(
+        part="snippet", channelId=channel_id, type="video",
+        order="date", maxResults=max_results,
+    ).execute()
+
+    video_ids = [item["id"]["videoId"] for item in resp.get("items", [])]
+    if not video_ids:
+        return []
+
+    stats_resp = youtube.videos().list(part="statistics,snippet", id=",".join(video_ids)).execute()
+
+    videos = []
+    for item in stats_resp.get("items", []):
+        s = item["statistics"]
+        videos.append({
+            "video_id": item["id"],
+            "title": item["snippet"]["title"],
+            "channel": item["snippet"]["channelTitle"],
+            "views": int(s.get("viewCount", 0)),
+            "likes": int(s.get("likeCount", 0)),
+            "comments": int(s.get("commentCount", 0)),
+            "published": item["snippet"]["publishedAt"][:10],
+            "thumbnail": item["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
+        })
+    videos.sort(key=lambda x: x["views"], reverse=True)
+    return videos
 
 
 # ── Routes ──
@@ -183,26 +272,53 @@ def toggle_idea():
 
 @app.route("/add_channel", methods=["POST"])
 def add_channel():
-    """채널 수동 추가 (YouTube URL 또는 채널명)"""
+    """YouTube 채널 추가 — URL, @handle, 채널명 모두 가능"""
     data = request.form if request.form else request.json or {}
-    channel_name = data.get("channel", "").strip()
+    channel_input = data.get("channel", "").strip()
     category = data.get("category", "").strip()
     note = data.get("note", "").strip()
-    if not channel_name:
+    if not channel_input:
         return redirect("/")
+
     db = load_db()
     if "channels" not in db:
         db["channels"] = []
-    # 중복 체크
-    existing = {c["name"].lower() for c in db["channels"]}
-    if channel_name.lower() not in existing:
-        db["channels"].append({
-            "name": channel_name,
-            "category": category or "Uncategorized",
-            "note": note,
-            "date_added": datetime.now().strftime("%Y-%m-%d"),
-        })
-        save_db(db)
+
+    # YouTube API로 채널 정보 가져오기
+    ch_info = resolve_channel_id(channel_input)
+    if ch_info:
+        existing = {c.get("channel_id", "").lower() for c in db["channels"]}
+        if ch_info["channel_id"].lower() not in existing:
+            db["channels"].append({
+                "channel_id": ch_info["channel_id"],
+                "name": ch_info["name"],
+                "thumbnail": ch_info["thumbnail"],
+                "subscribers": ch_info["subscribers"],
+                "total_videos": ch_info["total_videos"],
+                "total_views": ch_info["total_views"],
+                "description": ch_info["description"],
+                "category": category or "Uncategorized",
+                "note": note,
+                "date_added": datetime.now().strftime("%Y-%m-%d"),
+            })
+            save_db(db)
+    else:
+        # API 실패 시 이름만 저장
+        existing = {c["name"].lower() for c in db["channels"]}
+        if channel_input.lower() not in existing:
+            db["channels"].append({
+                "channel_id": "",
+                "name": channel_input,
+                "thumbnail": "",
+                "subscribers": 0,
+                "total_videos": 0,
+                "total_views": 0,
+                "description": "",
+                "category": category or "Uncategorized",
+                "note": note,
+                "date_added": datetime.now().strftime("%Y-%m-%d"),
+            })
+            save_db(db)
     return redirect("/")
 
 
@@ -244,6 +360,60 @@ def add_idea():
     })
     save_db(db)
     return redirect("/")
+
+
+@app.route("/channel/<channel_id>")
+def channel_detail(channel_id):
+    """채널 상세 — 최근 영상 목록"""
+    db = load_db()
+    ch = None
+    for c in db.get("channels", []):
+        if c.get("channel_id") == channel_id:
+            ch = c
+            break
+    if not ch:
+        return redirect("/")
+
+    videos = fetch_channel_videos(channel_id, max_results=15)
+    existing_ids = {v["video_id"] for v in db["videos"]}
+    for v in videos:
+        v["already_added"] = v["video_id"] in existing_ids
+
+    concepts = list(CONCEPT_MAP.values())
+    return render_template("channel.html", ch=ch, videos=videos, concepts=concepts)
+
+
+@app.route("/import_video", methods=["POST"])
+def import_video():
+    """채널 상세에서 영상 가져오기"""
+    data = request.json or {}
+    video_id = data.get("video_id", "")
+    concept = data.get("concept", "Etc")
+    if not video_id:
+        return jsonify({"error": "no video_id"}), 400
+
+    info = fetch_youtube_info(f"https://youtube.com/watch?v={video_id}")
+    if not info:
+        return jsonify({"error": "fetch failed"}), 400
+
+    db = load_db()
+    existing_ids = {v["video_id"] for v in db["videos"]}
+    if info["video_id"] not in existing_ids:
+        db["videos"].append({
+            "video_id": info["video_id"],
+            "title": info["title"],
+            "channel": info["channel"],
+            "views": info["views"],
+            "likes": info["likes"],
+            "comments": info["comments"],
+            "query": "channel_import",
+            "published": info["published"],
+            "date_collected": datetime.now().strftime("%Y-%m-%d"),
+            "concept": concept,
+            "hidden": False,
+        })
+        save_db(db)
+    return jsonify({"ok": True})
 
 
 @app.route("/run_agent", methods=["POST"])

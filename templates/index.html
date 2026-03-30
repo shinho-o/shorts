@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmetry Dashboard</title>
+    <style>
+        :root { --neon:#39FF14; --bg:#0D0D0D; --card:#1A1A1A; --border:#2A2A2A; --text:#E0E0E0; --dim:#888; --blue:#00F5FF; --red:#FF4444; --yellow:#FFD700; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+        .container { max-width:1400px; margin:0 auto; padding:20px; }
+        header { display:flex; justify-content:space-between; align-items:center; padding:20px 0; border-bottom:1px solid var(--border); margin-bottom:30px; }
+        header h1 { color:var(--neon); font-size:1.8em; letter-spacing:2px; }
+        .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
+        .tab { padding:10px 24px; cursor:pointer; border:none; background:none; color:var(--dim); font-size:15px; border-bottom:2px solid transparent; margin-bottom:-2px; }
+        .tab:hover { color:var(--text); }
+        .tab.active { color:var(--neon); border-bottom-color:var(--neon); }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+        .stat-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center; }
+        .stat-value { font-size:2em; font-weight:700; color:var(--neon); }
+        .stat-label { font-size:13px; color:var(--dim); margin-top:4px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; transition:border-color .2s; }
+        .card:hover { border-color:#444; }
+        .card.dim { opacity:.35; }
+        .card-title { font-size:1.05em; font-weight:600; color:white; margin-bottom:8px; }
+        .meta { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--dim); margin:6px 0; }
+        .meta b { color:var(--text); }
+        .tag { display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px; margin:2px; border:1px solid; }
+        .tag-g { border-color:var(--neon); color:var(--neon); }
+        .tag-b { border-color:var(--blue); color:var(--blue); }
+        .tag-high { border-color:var(--neon); color:var(--neon); background:rgba(57,255,20,.1); }
+        .tag-medium { border-color:var(--yellow); color:var(--yellow); background:rgba(255,215,0,.1); }
+        .tag-low { border-color:var(--dim); color:var(--dim); }
+        .btn { padding:6px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; font-size:13px; }
+        .btn:hover { border-color:var(--neon); color:var(--neon); }
+        .btn-p { background:var(--neon); color:var(--bg); border-color:var(--neon); font-weight:600; }
+        .btn-p:hover { background:#2DE010; }
+        .btn-d { border-color:var(--red); color:var(--red); }
+        .btn-d:hover { background:var(--red); color:white; }
+        .btn-sm { padding:4px 10px; font-size:12px; }
+        .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+        .thumb { width:100%; border-radius:8px; margin-bottom:8px; aspect-ratio:16/9; object-fit:cover; }
+        .bar { height:4px; border-radius:2px; background:var(--border); margin-top:6px; }
+        .bar-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,var(--neon),var(--blue)); }
+        .filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+        .fbtn { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:none; color:var(--dim); cursor:pointer; font-size:12px; }
+        .fbtn.active { border-color:var(--neon); color:var(--neon); }
+        .add-form { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; }
+        .add-form input { width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; }
+        .add-form input:focus { outline:none; border-color:var(--neon); }
+        .add-form select { padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; }
+        a { color:var(--blue); text-decoration:none; }
+        a:hover { text-decoration:underline; }
+        .rec-card { background:linear-gradient(135deg,var(--card),rgba(10,61,44,.2)); border-color:rgba(57,255,20,.3); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>FARMETRY</h1>
+        <div style="display:flex;gap:8px;">
+            <button class="btn" onclick="toggleHidden()">Hidden ({{ hidden_count + hidden_ideas }})</button>
+            <button class="btn btn-p" id="runBtn" onclick="runAgent()">Run Agent</button>
+        </div>
+    </header>
+
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value">{{ videos|length }}</div><div class="stat-label">Videos</div></div>
+        <div class="stat-card"><div class="stat-value">{{ ideas|length }}</div><div class="stat-label">Ideas</div></div>
+        <div class="stat-card"><div class="stat-value">{{ concepts|length }}</div><div class="stat-label">Concepts</div></div>
+        <div class="stat-card"><div class="stat-value">{{ "{:,}".format(total_views) }}</div><div class="stat-label">Total Views</div></div>
+        <div class="stat-card"><div class="stat-value">{{ runs|length }}</div><div class="stat-label">Runs</div></div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="videos">Videos</button>
+        <button class="tab" data-tab="ideas">Ideas</button>
+        <button class="tab" data-tab="channels">Channels</button>
+        <button class="tab" data-tab="recs">Recommendations</button>
+    </div>
+
+    <!-- VIDEOS -->
+    <div id="videos" class="tab-content active">
+        <div class="add-form">
+            <form action="/add_video" method="POST" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <div style="flex:1;min-width:250px;"><input name="url" placeholder="YouTube URL" required></div>
+                <select name="concept">
+                    {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                    <option value="Etc">Etc</option>
+                </select>
+                <button type="submit" class="btn btn-p">+ Add</button>
+            </form>
+        </div>
+        <div class="filters">
+            <button class="fbtn active" data-f="all">All</button>
+            {% for c in concepts %}<button class="fbtn" data-f="{{ c }}">{{ c }}</button>{% endfor %}
+        </div>
+        <div class="grid" id="vgrid">
+            {% for v in videos %}
+            <div class="card" data-concept="{{ v.concept }}" data-vid="{{ v.video_id }}">
+                <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank">
+                    <img class="thumb" src="https://img.youtube.com/vi/{{ v.video_id }}/mqdefault.jpg" loading="lazy">
+                </a>
+                <div class="card-title">{{ v.title[:55] }}{% if v.title|length > 55 %}...{% endif %}</div>
+                <div class="meta">
+                    <span>{{ v.channel }}</span>
+                    <span><b>{{ "{:,}".format(v.views) }}</b> views</span>
+                    <span><b>{{ "{:,}".format(v.likes) }}</b> likes</span>
+                </div>
+                <div>
+                    <span class="tag tag-g">{{ v.concept }}</span>
+                    <span class="tag" style="border-color:var(--dim);color:var(--dim);">{{ v.date_collected }}</span>
+                </div>
+                {% if v.views > 0 %}
+                <div class="bar"><div class="bar-fill" style="width:{{ [v.likes * 100 // v.views, 100]|min }}%"></div></div>
+                {% endif %}
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank" class="btn btn-sm">Watch</a>
+                    <button class="btn btn-sm btn-d" onclick="hideVideo('{{ v.video_id }}')">Hide</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- IDEAS -->
+    <div id="ideas" class="tab-content">
+        {% for idea in ideas %}
+        <div class="card" data-idx="{{ loop.index0 }}">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">{{ idea.title }}</div>
+                <span class="tag tag-{{ idea.viral_potential|lower }}">{{ idea.viral_potential }}</span>
+            </div>
+            <div class="meta">
+                <span>Format: <b>{{ idea.format }}</b></span>
+                <span>Trend: <b>{{ idea.source_trend }}</b></span>
+                <span>{{ idea.get('date','') }}</span>
+            </div>
+            {% if idea.slides %}
+            <div style="margin:8px 0;font-size:13px;">
+                {% for s in idea.slides %}
+                <div style="padding:3px 0;border-bottom:1px solid var(--border);">{{ loop.index }}. {{ s }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div style="margin:6px 0;">
+                {% for h in idea.hashtags %}<span class="tag tag-b">{{ h }}</span>{% endfor %}
+            </div>
+            <div style="font-size:12px;color:var(--dim);font-style:italic;">{{ idea.reason }}</div>
+            <div style="margin-top:8px;">
+                <button class="btn btn-sm btn-d" onclick="hideIdea({{ loop.index0 }})">Not feeling it</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- CHANNELS -->
+    <div id="channels" class="tab-content">
+        {% for name, ch in channel_stats.items() %}
+        <div class="card">
+            <div class="card-title">{{ name }}</div>
+            <div class="meta">
+                <span><b>{{ ch.count }}</b> videos</span>
+                <span><b>{{ "{:,}".format(ch.total_views) }}</b> views</span>
+                <span><b>{{ "{:,}".format(ch.total_likes) }}</b> likes</span>
+                <span><b>{{ "%.1f"|format(ch.engagement) }}%</b> engagement</span>
+            </div>
+            <div>{% for t in ch.topics %}<span class="tag tag-g">{{ t }}</span>{% endfor %}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- RECOMMENDATIONS -->
+    <div id="recs" class="tab-content">
+        {% if latest_run %}
+        <h3 style="color:var(--neon);margin-bottom:16px;">Latest: {{ latest_run.get('date','') }}</h3>
+        <p style="color:var(--dim);margin-bottom:20px;">{{ latest_run.get('summary','') }}</p>
+
+        {% if latest_run.get('reference_videos') %}
+        <h4 style="margin-bottom:12px;">Reference Videos</h4>
+        {% for rv in latest_run.reference_videos %}
+        <div class="card rec-card">
+            <div class="card-title">{{ rv.title }}</div>
+            <div class="meta"><span>{{ rv.channel }}</span></div>
+            <div style="font-size:13px;margin-top:6px;">{{ rv.why_study }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if latest_run.get('recommended_channels') %}
+        <h4 style="margin:20px 0 12px;">Benchmark Channels</h4>
+        {% for rc in latest_run.recommended_channels %}
+        <div class="card rec-card">
+            <div class="card-title">{{ rc.channel }}</div>
+            <div class="meta"><span class="tag tag-g">{{ rc.category }}</span></div>
+            <div style="font-size:13px;margin-top:6px;">{{ rc.what_to_learn }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% else %}
+        <p style="color:var(--dim);">No runs yet. Click "Run Agent" to start.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+        document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById(t.dataset.tab).classList.add('active');
+    });
+});
+document.querySelectorAll('.fbtn').forEach(b=>{
+    b.addEventListener('click',()=>{
+        document.querySelectorAll('.fbtn').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+        const f=b.dataset.f;
+        document.querySelectorAll('#vgrid .card').forEach(c=>{
+            c.style.display=(f==='all'||c.dataset.concept===f)?'':'none';
+        });
+    });
+});
+let showH=false;
+function toggleHidden(){
+    showH=!showH;
+    document.querySelectorAll('.dim').forEach(e=>e.style.display=showH?'':'none');
+}
+function hideVideo(vid){
+    fetch('/toggle_video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_id:vid})}).then(()=>location.reload());
+}
+function hideIdea(idx){
+    fetch('/toggle_idea',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})}).then(()=>location.reload());
+}
+function runAgent(){
+    if(!confirm('Run agent? (1-2 min)'))return;
+    const b=document.getElementById('runBtn');
+    b.textContent='Running...';b.disabled=true;
+    fetch('/run_agent',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message);location.reload();}).catch(()=>{b.textContent='Run Agent';b.disabled=false;});
+}
+</script>
+</body>
+</html>

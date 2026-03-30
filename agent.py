@@ -32,6 +32,9 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
 KAKAO_TOKEN = os.getenv("KAKAO_TOKEN", "")
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
 # Obsidian vault 경로
 OBSIDIAN_VAULT = Path(os.getenv("OBSIDIAN_VAULT", r"C:\obsidian\My first remote vault"))
 
@@ -645,54 +648,65 @@ def run():
 
 
 def save_to_dashboard_db(analysis: dict, videos: list):
-    """대시보드에서 읽을 JSON DB 저장/업데이트"""
-    db_path = SCRIPT_DIR / "data" / "db.json"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    """Supabase에 결과 저장"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("[SKIP] Supabase 키 없음 — 건너뜀")
+        return
 
-    # 기존 DB 로드
-    if db_path.exists():
-        db = json.loads(db_path.read_text(encoding="utf-8"))
-    else:
-        db = {"videos": [], "ideas": [], "runs": []}
-
+    from supabase import create_client
+    s = create_client(SUPABASE_URL, SUPABASE_KEY)
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 영상 추가 (중복 체크)
-    existing_ids = {v["video_id"] for v in db["videos"]}
+    # 영상 upsert
+    vid_rows = []
     for v in videos:
-        if v["video_id"] not in existing_ids:
-            db["videos"].append({
-                "video_id": v["video_id"],
-                "title": v["title"],
-                "channel": v["channel"],
-                "views": v.get("views", 0),
-                "likes": v.get("likes", 0),
-                "comments": v.get("comments", 0),
-                "query": v["query"],
-                "published": v.get("published", ""),
-                "date_collected": today,
-                "concept": CONCEPT_MAP.get(v["query"], "Etc"),
-                "hidden": False,
-            })
+        vid_rows.append({
+            "video_id": v["video_id"],
+            "title": v["title"],
+            "channel": v["channel"],
+            "views": v.get("views", 0),
+            "likes": v.get("likes", 0),
+            "comments": v.get("comments", 0),
+            "query": v["query"],
+            "published": v.get("published", ""),
+            "date_collected": today,
+            "concept": CONCEPT_MAP.get(v["query"], "Etc"),
+            "hidden": False,
+        })
+    if vid_rows:
+        s.table("videos").upsert(vid_rows, on_conflict="video_id").execute()
+    print(f"[OK] Supabase 영상 저장: {len(vid_rows)}개")
 
-    # 아이디어 추가
+    # 아이디어 insert
+    idea_rows = []
     for idea in analysis["ideas"]:
-        idea["date"] = today
-        idea["hidden"] = False
-    db["ideas"].extend(analysis["ideas"])
+        idea_rows.append({
+            "rank": idea.get("rank", 0),
+            "viral_potential": idea.get("viral_potential", ""),
+            "format": idea.get("format", ""),
+            "source_trend": idea.get("source_trend", ""),
+            "title": idea.get("title", ""),
+            "slides": idea.get("slides", []),
+            "bgm": idea.get("bgm", ""),
+            "hashtags": idea.get("hashtags", []),
+            "reason": idea.get("reason", ""),
+            "date": today,
+            "hidden": False,
+        })
+    if idea_rows:
+        s.table("ideas").insert(idea_rows).execute()
+    print(f"[OK] Supabase 아이디어 저장: {len(idea_rows)}개")
 
     # 실행 기록
-    db["runs"].append({
+    s.table("runs").insert({
         "date": today,
         "videos_collected": len(videos),
         "ideas_generated": len(analysis["ideas"]),
         "summary": analysis.get("summary", ""),
         "reference_videos": analysis.get("reference_videos", []),
         "recommended_channels": analysis.get("recommended_channels", []),
-    })
-
-    db_path.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[OK] Dashboard DB 저장: {db_path}")
+    }).execute()
+    print(f"[OK] Supabase 실행 기록 저장")
 
 
 if __name__ == "__main__":

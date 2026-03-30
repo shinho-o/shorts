@@ -1,5 +1,5 @@
 """
-Farmetry Dashboard — JSON DB 기반 웹 대시보드
+Farmetry Dashboard — Supabase DB 기반 웹 대시보드
 """
 import os
 import json
@@ -9,12 +9,14 @@ from pathlib import Path
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect
 from dotenv import load_dotenv
+from supabase import create_client
 
 SCRIPT_DIR = Path(__file__).parent
 load_dotenv(SCRIPT_DIR / ".env")
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
-DB_PATH = SCRIPT_DIR / "data" / "db.json"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 app = Flask(__name__)
 
@@ -29,16 +31,11 @@ CONCEPT_MAP = {
 }
 
 
-def load_db():
-    if DB_PATH.exists():
-        return json.loads(DB_PATH.read_text(encoding="utf-8"))
-    return {"videos": [], "ideas": [], "runs": []}
+def sb():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def save_db(db):
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DB_PATH.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
-
+# ── YouTube helpers ──
 
 def _yt():
     from googleapiclient.discovery import build
@@ -75,29 +72,23 @@ def fetch_youtube_info(url):
 
 
 def resolve_channel_id(input_str):
-    """YouTube 채널 URL, @handle, 또는 채널명 → channel_id + 채널 정보"""
     if not YOUTUBE_API_KEY:
         return None
     youtube = _yt()
-
     channel_id = None
 
-    # @handle or URL with @
     m = re.search(r"@([\w.-]+)", input_str)
     if m:
-        handle = m.group(1)
-        resp = youtube.search().list(part="snippet", q=f"@{handle}", type="channel", maxResults=1).execute()
+        resp = youtube.search().list(part="snippet", q=f"@{m.group(1)}", type="channel", maxResults=1).execute()
         items = resp.get("items", [])
         if items:
             channel_id = items[0]["snippet"]["channelId"]
 
-    # /channel/UCxxxx URL
     if not channel_id:
         m = re.search(r"channel/(UC[\w-]+)", input_str)
         if m:
             channel_id = m.group(1)
 
-    # /c/name or plain search
     if not channel_id:
         resp = youtube.search().list(part="snippet", q=input_str, type="channel", maxResults=1).execute()
         items = resp.get("items", [])
@@ -107,12 +98,10 @@ def resolve_channel_id(input_str):
     if not channel_id:
         return None
 
-    # 채널 상세 정보
     ch_resp = youtube.channels().list(part="snippet,statistics", id=channel_id).execute()
     ch_items = ch_resp.get("items", [])
     if not ch_items:
         return None
-
     ch = ch_items[0]
     return {
         "channel_id": channel_id,
@@ -126,22 +115,17 @@ def resolve_channel_id(input_str):
 
 
 def fetch_channel_videos(channel_id, max_results=12):
-    """채널의 최근 영상 가져오기 (통계 포함)"""
     if not YOUTUBE_API_KEY:
         return []
     youtube = _yt()
-
     resp = youtube.search().list(
         part="snippet", channelId=channel_id, type="video",
         order="date", maxResults=max_results,
     ).execute()
-
     video_ids = [item["id"]["videoId"] for item in resp.get("items", [])]
     if not video_ids:
         return []
-
     stats_resp = youtube.videos().list(part="statistics,snippet", id=",".join(video_ids)).execute()
-
     videos = []
     for item in stats_resp.get("items", []):
         s = item["statistics"]
@@ -163,18 +147,19 @@ def fetch_channel_videos(channel_id, max_results=12):
 
 @app.route("/")
 def index():
-    db = load_db()
-    videos = [v for v in db["videos"] if not v.get("hidden")]
-    hidden_count = sum(1 for v in db["videos"] if v.get("hidden"))
-    ideas = [i for i in db["ideas"] if not i.get("hidden")]
-    hidden_ideas = sum(1 for i in db["ideas"] if i.get("hidden"))
-    runs = db.get("runs", [])
+    s = sb()
+    all_videos = s.table("videos").select("*").execute().data
+    all_ideas = s.table("ideas").select("*").execute().data
+    runs = s.table("runs").select("*").order("id", desc=True).execute().data
+    saved_channels = s.table("channels").select("*").execute().data
 
-    # channel stats
+    videos = [v for v in all_videos if not v.get("hidden")]
+    hidden_count = sum(1 for v in all_videos if v.get("hidden"))
+    ideas = [i for i in all_ideas if not i.get("hidden")]
+    hidden_ideas = sum(1 for i in all_ideas if i.get("hidden"))
+
     channel_stats = {}
-    for v in db["videos"]:
-        if v.get("hidden"):
-            continue
+    for v in videos:
         ch = v["channel"]
         if ch not in channel_stats:
             channel_stats[ch] = {"count": 0, "total_views": 0, "total_likes": 0, "topics": set()}
@@ -182,22 +167,18 @@ def index():
         channel_stats[ch]["total_views"] += v.get("views", 0)
         channel_stats[ch]["total_likes"] += v.get("likes", 0)
         channel_stats[ch]["topics"].add(v.get("concept", ""))
-    for s in channel_stats.values():
-        s["engagement"] = (s["total_likes"] / s["total_views"] * 100) if s["total_views"] > 0 else 0
-        s["topics"] = list(s["topics"])
+    for cs in channel_stats.values():
+        cs["engagement"] = (cs["total_likes"] / cs["total_views"] * 100) if cs["total_views"] > 0 else 0
+        cs["topics"] = list(cs["topics"])
     channel_stats = dict(sorted(channel_stats.items(), key=lambda x: x[1]["total_views"], reverse=True)[:20])
 
     concepts = list(CONCEPT_MAP.values())
     total_views = sum(v.get("views", 0) for v in videos)
-
-    # latest recommendations
-    latest_run = runs[-1] if runs else {}
-
-    saved_channels = db.get("channels", [])
+    latest_run = runs[0] if runs else {}
 
     return render_template("index.html",
         videos=sorted(videos, key=lambda x: x.get("views", 0), reverse=True),
-        ideas=list(reversed(ideas)),
+        ideas=sorted(ideas, key=lambda x: x.get("id", 0), reverse=True),
         concepts=concepts,
         channel_stats=channel_stats,
         total_views=total_views,
@@ -209,14 +190,6 @@ def index():
     )
 
 
-@app.route("/api/videos")
-def api_videos():
-    db = load_db()
-    show_hidden = request.args.get("hidden", "false") == "true"
-    videos = db["videos"] if show_hidden else [v for v in db["videos"] if not v.get("hidden")]
-    return jsonify(videos)
-
-
 @app.route("/add_video", methods=["POST"])
 def add_video():
     url = request.form.get("url", "").strip()
@@ -226,23 +199,14 @@ def add_video():
     info = fetch_youtube_info(url)
     if not info:
         return redirect("/")
-    db = load_db()
-    existing_ids = {v["video_id"] for v in db["videos"]}
-    if info["video_id"] not in existing_ids:
-        db["videos"].append({
-            "video_id": info["video_id"],
-            "title": info["title"],
-            "channel": info["channel"],
-            "views": info["views"],
-            "likes": info["likes"],
-            "comments": info["comments"],
-            "query": "manual",
-            "published": info["published"],
-            "date_collected": datetime.now().strftime("%Y-%m-%d"),
-            "concept": concept,
-            "hidden": False,
-        })
-        save_db(db)
+    s = sb()
+    s.table("videos").upsert({
+        "video_id": info["video_id"], "title": info["title"], "channel": info["channel"],
+        "views": info["views"], "likes": info["likes"], "comments": info["comments"],
+        "query": "manual", "published": info["published"],
+        "date_collected": datetime.now().strftime("%Y-%m-%d"),
+        "concept": concept, "hidden": False,
+    }, on_conflict="video_id").execute()
     return redirect("/")
 
 
@@ -250,29 +214,26 @@ def add_video():
 def toggle_video():
     data = request.json
     vid = data.get("video_id")
-    db = load_db()
-    for v in db["videos"]:
-        if v["video_id"] == vid:
-            v["hidden"] = not v.get("hidden", False)
-            break
-    save_db(db)
+    s = sb()
+    row = s.table("videos").select("hidden").eq("video_id", vid).execute().data
+    if row:
+        s.table("videos").update({"hidden": not row[0]["hidden"]}).eq("video_id", vid).execute()
     return jsonify({"ok": True})
 
 
 @app.route("/toggle_idea", methods=["POST"])
 def toggle_idea():
     data = request.json
-    idx = data.get("index")
-    db = load_db()
-    if 0 <= idx < len(db["ideas"]):
-        db["ideas"][idx]["hidden"] = not db["ideas"][idx].get("hidden", False)
-    save_db(db)
+    idea_id = data.get("id")
+    s = sb()
+    row = s.table("ideas").select("hidden").eq("id", idea_id).execute().data
+    if row:
+        s.table("ideas").update({"hidden": not row[0]["hidden"]}).eq("id", idea_id).execute()
     return jsonify({"ok": True})
 
 
 @app.route("/add_channel", methods=["POST"])
 def add_channel():
-    """YouTube 채널 추가 — URL, @handle, 채널명 모두 가능"""
     data = request.form if request.form else request.json or {}
     channel_input = data.get("channel", "").strip()
     category = data.get("category", "").strip()
@@ -280,45 +241,24 @@ def add_channel():
     if not channel_input:
         return redirect("/")
 
-    db = load_db()
-    if "channels" not in db:
-        db["channels"] = []
-
-    # YouTube API로 채널 정보 가져오기
+    s = sb()
     ch_info = resolve_channel_id(channel_input)
     if ch_info:
-        existing = {c.get("channel_id", "").lower() for c in db["channels"]}
-        if ch_info["channel_id"].lower() not in existing:
-            db["channels"].append({
-                "channel_id": ch_info["channel_id"],
-                "name": ch_info["name"],
-                "thumbnail": ch_info["thumbnail"],
-                "subscribers": ch_info["subscribers"],
-                "total_videos": ch_info["total_videos"],
-                "total_views": ch_info["total_views"],
-                "description": ch_info["description"],
-                "category": category or "Uncategorized",
-                "note": note,
-                "date_added": datetime.now().strftime("%Y-%m-%d"),
-            })
-            save_db(db)
+        s.table("channels").upsert({
+            "channel_id": ch_info["channel_id"], "name": ch_info["name"],
+            "thumbnail": ch_info["thumbnail"], "subscribers": ch_info["subscribers"],
+            "total_videos": ch_info["total_videos"], "total_views": ch_info["total_views"],
+            "description": ch_info["description"],
+            "category": category or "Uncategorized", "note": note,
+            "date_added": datetime.now().strftime("%Y-%m-%d"),
+        }, on_conflict="channel_id").execute()
     else:
-        # API 실패 시 이름만 저장
-        existing = {c["name"].lower() for c in db["channels"]}
-        if channel_input.lower() not in existing:
-            db["channels"].append({
-                "channel_id": "",
-                "name": channel_input,
-                "thumbnail": "",
-                "subscribers": 0,
-                "total_videos": 0,
-                "total_views": 0,
-                "description": "",
-                "category": category or "Uncategorized",
-                "note": note,
-                "date_added": datetime.now().strftime("%Y-%m-%d"),
-            })
-            save_db(db)
+        s.table("channels").insert({
+            "channel_id": "", "name": channel_input, "thumbnail": "",
+            "subscribers": 0, "total_videos": 0, "total_views": 0, "description": "",
+            "category": category or "Uncategorized", "note": note,
+            "date_added": datetime.now().strftime("%Y-%m-%d"),
+        }).execute()
     return redirect("/")
 
 
@@ -326,93 +266,66 @@ def add_channel():
 def remove_channel():
     data = request.json
     name = data.get("name", "")
-    db = load_db()
-    db["channels"] = [c for c in db.get("channels", []) if c["name"] != name]
-    save_db(db)
+    sb().table("channels").delete().eq("name", name).execute()
     return jsonify({"ok": True})
 
 
 @app.route("/add_idea", methods=["POST"])
 def add_idea():
-    """아이디어 수동 추가"""
     data = request.form if request.form else request.json or {}
     title = data.get("title", "").strip()
-    fmt = data.get("format", "").strip()
-    slides = data.get("slides", "").strip()
-    hashtags = data.get("hashtags", "").strip()
-    bgm = data.get("bgm", "").strip()
-    reason = data.get("reason", "").strip()
     if not title:
         return redirect("/")
-    db = load_db()
-    db["ideas"].append({
+    slides = data.get("slides", "").strip()
+    hashtags = data.get("hashtags", "").strip()
+    sb().table("ideas").insert({
         "rank": 0,
         "viral_potential": data.get("viral_potential", "Medium"),
-        "format": fmt,
+        "format": data.get("format", "").strip(),
         "source_trend": "manual",
         "title": title,
         "slides": [s.strip() for s in slides.split("\n") if s.strip()] if slides else [],
-        "bgm": bgm,
-        "hashtags": [h.strip() for h in hashtags.split() if h.strip()],
-        "reason": reason,
+        "bgm": data.get("bgm", "").strip(),
+        "hashtags": [h.strip() for h in hashtags.split() if h.strip()] if hashtags else [],
+        "reason": data.get("reason", "").strip(),
         "date": datetime.now().strftime("%Y-%m-%d"),
         "hidden": False,
-    })
-    save_db(db)
+    }).execute()
     return redirect("/")
 
 
 @app.route("/channel/<channel_id>")
 def channel_detail(channel_id):
-    """채널 상세 — 최근 영상 목록"""
-    db = load_db()
-    ch = None
-    for c in db.get("channels", []):
-        if c.get("channel_id") == channel_id:
-            ch = c
-            break
-    if not ch:
+    s = sb()
+    rows = s.table("channels").select("*").eq("channel_id", channel_id).execute().data
+    if not rows:
         return redirect("/")
-
+    ch = rows[0]
     videos = fetch_channel_videos(channel_id, max_results=15)
-    existing_ids = {v["video_id"] for v in db["videos"]}
+    existing_ids = {v["video_id"] for v in s.table("videos").select("video_id").execute().data}
     for v in videos:
         v["already_added"] = v["video_id"] in existing_ids
-
     concepts = list(CONCEPT_MAP.values())
     return render_template("channel.html", ch=ch, videos=videos, concepts=concepts)
 
 
 @app.route("/import_video", methods=["POST"])
 def import_video():
-    """채널 상세에서 영상 가져오기"""
     data = request.json or {}
     video_id = data.get("video_id", "")
     concept = data.get("concept", "Etc")
     if not video_id:
         return jsonify({"error": "no video_id"}), 400
-
     info = fetch_youtube_info(f"https://youtube.com/watch?v={video_id}")
     if not info:
         return jsonify({"error": "fetch failed"}), 400
-
-    db = load_db()
-    existing_ids = {v["video_id"] for v in db["videos"]}
-    if info["video_id"] not in existing_ids:
-        db["videos"].append({
-            "video_id": info["video_id"],
-            "title": info["title"],
-            "channel": info["channel"],
-            "views": info["views"],
-            "likes": info["likes"],
-            "comments": info["comments"],
-            "query": "channel_import",
-            "published": info["published"],
-            "date_collected": datetime.now().strftime("%Y-%m-%d"),
-            "concept": concept,
-            "hidden": False,
-        })
-        save_db(db)
+    sb().table("videos").upsert({
+        "video_id": info["video_id"], "title": info["title"], "channel": info["channel"],
+        "views": info["views"], "likes": info["likes"], "comments": info["comments"],
+        "query": "channel_import", "published": info["published"],
+        "date_collected": datetime.now().strftime("%Y-%m-%d"),
+        "concept": concept, "hidden": False,
+    }, on_conflict="video_id").execute()
     return jsonify({"ok": True})
 
 

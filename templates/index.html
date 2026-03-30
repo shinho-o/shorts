@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,16 +11,16 @@
         .container { max-width:1400px; margin:0 auto; padding:20px; }
         header { display:flex; justify-content:space-between; align-items:center; padding:20px 0; border-bottom:1px solid var(--border); margin-bottom:30px; }
         header h1 { color:var(--neon); font-size:1.8em; letter-spacing:2px; }
-        .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
-        .tab { padding:10px 24px; cursor:pointer; border:none; background:none; color:var(--dim); font-size:15px; border-bottom:2px solid transparent; margin-bottom:-2px; }
+        .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); overflow-x:auto; }
+        .tab { padding:10px 20px; cursor:pointer; border:none; background:none; color:var(--dim); font-size:14px; border-bottom:2px solid transparent; margin-bottom:-2px; white-space:nowrap; }
         .tab:hover { color:var(--text); }
         .tab.active { color:var(--neon); border-bottom-color:var(--neon); }
         .tab-content { display:none; }
         .tab-content.active { display:block; }
-        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
-        .stat-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center; }
-        .stat-value { font-size:2em; font-weight:700; color:var(--neon); }
-        .stat-label { font-size:13px; color:var(--dim); margin-top:4px; }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
+        .stat-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center; }
+        .stat-value { font-size:1.8em; font-weight:700; color:var(--neon); }
+        .stat-label { font-size:12px; color:var(--dim); margin-top:4px; }
         .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; transition:border-color .2s; }
         .card:hover { border-color:#444; }
         .card.dim { opacity:.35; }
@@ -48,12 +48,15 @@
         .fbtn { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:none; color:var(--dim); cursor:pointer; font-size:12px; }
         .fbtn.active { border-color:var(--neon); color:var(--neon); }
         .add-form { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; }
-        .add-form input { width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; }
-        .add-form input:focus { outline:none; border-color:var(--neon); }
+        .add-form input, .add-form textarea { width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; font-family:inherit; }
+        .add-form input:focus, .add-form textarea:focus { outline:none; border-color:var(--neon); }
         .add-form select { padding:8px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; }
+        .add-form label { font-size:12px; color:var(--dim); margin-bottom:4px; display:block; }
         a { color:var(--blue); text-decoration:none; }
         a:hover { text-decoration:underline; }
         .rec-card { background:linear-gradient(135deg,var(--card),rgba(10,61,44,.2)); border-color:rgba(57,255,20,.3); }
+        .form-row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+        .form-row > * { flex:1; min-width:200px; }
     </style>
 </head>
 <body>
@@ -61,40 +64,40 @@
     <header>
         <h1>FARMETRY</h1>
         <div style="display:flex;gap:8px;">
-            <button class="btn" onclick="toggleHidden()">Hidden ({{ hidden_count + hidden_ideas }})</button>
-            <button class="btn btn-p" id="runBtn" onclick="runAgent()">Run Agent</button>
+            <button class="btn" onclick="toggleHidden()">숨긴 항목 ({{ hidden_count + hidden_ideas }})</button>
+            <button class="btn btn-p" id="runBtn" onclick="runAgent()">에이전트 실행</button>
         </div>
     </header>
 
     <div class="stats-grid">
-        <div class="stat-card"><div class="stat-value">{{ videos|length }}</div><div class="stat-label">Videos</div></div>
-        <div class="stat-card"><div class="stat-value">{{ ideas|length }}</div><div class="stat-label">Ideas</div></div>
-        <div class="stat-card"><div class="stat-value">{{ concepts|length }}</div><div class="stat-label">Concepts</div></div>
-        <div class="stat-card"><div class="stat-value">{{ "{:,}".format(total_views) }}</div><div class="stat-label">Total Views</div></div>
-        <div class="stat-card"><div class="stat-value">{{ runs|length }}</div><div class="stat-label">Runs</div></div>
+        <div class="stat-card"><div class="stat-value">{{ videos|length }}</div><div class="stat-label">수집 영상</div></div>
+        <div class="stat-card"><div class="stat-value">{{ ideas|length }}</div><div class="stat-label">아이디어</div></div>
+        <div class="stat-card"><div class="stat-value">{{ concepts|length }}</div><div class="stat-label">컨셉</div></div>
+        <div class="stat-card"><div class="stat-value">{{ "{:,}".format(total_views) }}</div><div class="stat-label">총 조회수</div></div>
+        <div class="stat-card"><div class="stat-value">{{ runs|length }}</div><div class="stat-label">실행 횟수</div></div>
     </div>
 
     <div class="tabs">
-        <button class="tab active" data-tab="videos">Videos</button>
-        <button class="tab" data-tab="ideas">Ideas</button>
-        <button class="tab" data-tab="channels">Channels</button>
-        <button class="tab" data-tab="recs">Recommendations</button>
+        <button class="tab active" data-tab="videos">영상</button>
+        <button class="tab" data-tab="ideas">아이디어</button>
+        <button class="tab" data-tab="channels">채널</button>
+        <button class="tab" data-tab="recs">추천</button>
     </div>
 
-    <!-- VIDEOS -->
+    <!-- 영상 -->
     <div id="videos" class="tab-content active">
         <div class="add-form">
             <form action="/add_video" method="POST" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <div style="flex:1;min-width:250px;"><input name="url" placeholder="YouTube URL" required></div>
+                <div style="flex:1;min-width:250px;"><input name="url" placeholder="YouTube URL 붙여넣기" required></div>
                 <select name="concept">
                     {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-                    <option value="Etc">Etc</option>
+                    <option value="Etc">기타</option>
                 </select>
-                <button type="submit" class="btn btn-p">+ Add</button>
+                <button type="submit" class="btn btn-p">+ 영상 추가</button>
             </form>
         </div>
         <div class="filters">
-            <button class="fbtn active" data-f="all">All</button>
+            <button class="fbtn active" data-f="all">전체</button>
             {% for c in concepts %}<button class="fbtn" data-f="{{ c }}">{{ c }}</button>{% endfor %}
         </div>
         <div class="grid" id="vgrid">
@@ -117,16 +120,56 @@
                 <div class="bar"><div class="bar-fill" style="width:{{ [v.likes * 100 // v.views, 100]|min }}%"></div></div>
                 {% endif %}
                 <div style="margin-top:8px;display:flex;gap:6px;">
-                    <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank" class="btn btn-sm">Watch</a>
-                    <button class="btn btn-sm btn-d" onclick="hideVideo('{{ v.video_id }}')">Hide</button>
+                    <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank" class="btn btn-sm">보기</a>
+                    <button class="btn btn-sm btn-d" onclick="hideVideo('{{ v.video_id }}')">숨기기</button>
                 </div>
             </div>
             {% endfor %}
         </div>
     </div>
 
-    <!-- IDEAS -->
+    <!-- 아이디어 -->
     <div id="ideas" class="tab-content">
+        <div class="add-form">
+            <h3 style="color:var(--neon);margin-bottom:12px;">+ 아이디어 추가</h3>
+            <form action="/add_idea" method="POST">
+                <div class="form-row" style="margin-bottom:8px;">
+                    <div><label>제목</label><input name="title" placeholder="릴스 제목" required></div>
+                    <div style="max-width:200px;">
+                        <label>포맷</label>
+                        <select name="format" style="width:100%;">
+                            <option>Average X vs Y enjoyer</option>
+                            <option>Looksmaxxing / glow up</option>
+                            <option>POV</option>
+                            <option>Expectation vs Reality</option>
+                            <option>Before / After</option>
+                            <option>Other</option>
+                        </select>
+                    </div>
+                    <div style="max-width:150px;">
+                        <label>바이럴 가능성</label>
+                        <select name="viral_potential" style="width:100%;">
+                            <option>High</option>
+                            <option selected>Medium</option>
+                            <option>Low</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label>슬라이드 (줄바꿈으로 구분)</label>
+                    <textarea name="slides" rows="3" placeholder="슬라이드 1 텍스트&#10;슬라이드 2 텍스트&#10;슬라이드 3 텍스트"></textarea>
+                </div>
+                <div class="form-row" style="margin-bottom:8px;">
+                    <div><label>해시태그 (공백 구분)</label><input name="hashtags" placeholder="#kale #superfood #koreantech"></div>
+                    <div><label>BGM</label><input name="bgm" placeholder="추천 BGM"></div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label>이유 / 메모</label><input name="reason" placeholder="왜 이 아이디어가 좋은지">
+                </div>
+                <button type="submit" class="btn btn-p">+ 아이디어 추가</button>
+            </form>
+        </div>
+
         {% for idea in ideas %}
         <div class="card" data-idx="{{ loop.index0 }}">
             <div style="display:flex;justify-content:space-between;align-items:start;">
@@ -134,8 +177,8 @@
                 <span class="tag tag-{{ idea.viral_potential|lower }}">{{ idea.viral_potential }}</span>
             </div>
             <div class="meta">
-                <span>Format: <b>{{ idea.format }}</b></span>
-                <span>Trend: <b>{{ idea.source_trend }}</b></span>
+                <span>포맷: <b>{{ idea.format }}</b></span>
+                <span>트렌드: <b>{{ idea.source_trend }}</b></span>
                 <span>{{ idea.get('date','') }}</span>
             </div>
             {% if idea.slides %}
@@ -148,38 +191,77 @@
             <div style="margin:6px 0;">
                 {% for h in idea.hashtags %}<span class="tag tag-b">{{ h }}</span>{% endfor %}
             </div>
+            {% if idea.bgm %}<div style="font-size:12px;color:var(--dim);">BGM: {{ idea.bgm }}</div>{% endif %}
             <div style="font-size:12px;color:var(--dim);font-style:italic;">{{ idea.reason }}</div>
             <div style="margin-top:8px;">
-                <button class="btn btn-sm btn-d" onclick="hideIdea({{ loop.index0 }})">Not feeling it</button>
+                <button class="btn btn-sm btn-d" onclick="hideIdea({{ loop.index0 }})">느낌 없음</button>
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- CHANNELS -->
+    <!-- 채널 -->
     <div id="channels" class="tab-content">
+        <div class="add-form">
+            <h3 style="color:var(--neon);margin-bottom:12px;">+ 채널 추가</h3>
+            <form action="/add_channel" method="POST" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+                <div style="flex:1;min-width:200px;"><label>채널명</label><input name="channel" placeholder="채널 이름" required></div>
+                <div style="min-width:150px;">
+                    <label>카테고리</label>
+                    <select name="category" style="width:100%;">
+                        <option>smart farm</option>
+                        <option>health food</option>
+                        <option>meme marketing</option>
+                        <option>K-food</option>
+                        <option>fitness</option>
+                        <option>other</option>
+                    </select>
+                </div>
+                <div style="flex:1;min-width:200px;"><label>메모</label><input name="note" placeholder="이 채널에서 배울 점"></div>
+                <button type="submit" class="btn btn-p">+ 채널 추가</button>
+            </form>
+        </div>
+
+        {% if saved_channels %}
+        <h4 style="color:var(--neon);margin-bottom:12px;">저장한 채널</h4>
+        {% for ch in saved_channels %}
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">{{ ch.name }}</div>
+                <button class="btn btn-sm btn-d" onclick="removeChannel('{{ ch.name }}')">삭제</button>
+            </div>
+            <div class="meta">
+                <span class="tag tag-g">{{ ch.category }}</span>
+                <span>{{ ch.date_added }}</span>
+            </div>
+            {% if ch.note %}<div style="font-size:13px;margin-top:4px;">{{ ch.note }}</div>{% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <h4 style="color:var(--neon);margin:20px 0 12px;">수집 데이터 기반 채널</h4>
         {% for name, ch in channel_stats.items() %}
         <div class="card">
             <div class="card-title">{{ name }}</div>
             <div class="meta">
-                <span><b>{{ ch.count }}</b> videos</span>
-                <span><b>{{ "{:,}".format(ch.total_views) }}</b> views</span>
-                <span><b>{{ "{:,}".format(ch.total_likes) }}</b> likes</span>
-                <span><b>{{ "%.1f"|format(ch.engagement) }}%</b> engagement</span>
+                <span><b>{{ ch.count }}</b>개 영상</span>
+                <span><b>{{ "{:,}".format(ch.total_views) }}</b> 조회수</span>
+                <span><b>{{ "{:,}".format(ch.total_likes) }}</b> 좋아요</span>
+                <span><b>{{ "%.1f"|format(ch.engagement) }}%</b> 참여율</span>
             </div>
             <div>{% for t in ch.topics %}<span class="tag tag-g">{{ t }}</span>{% endfor %}</div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- RECOMMENDATIONS -->
+    <!-- 추천 -->
     <div id="recs" class="tab-content">
         {% if latest_run %}
-        <h3 style="color:var(--neon);margin-bottom:16px;">Latest: {{ latest_run.get('date','') }}</h3>
+        <h3 style="color:var(--neon);margin-bottom:16px;">최근 실행: {{ latest_run.get('date','') }}</h3>
         <p style="color:var(--dim);margin-bottom:20px;">{{ latest_run.get('summary','') }}</p>
 
         {% if latest_run.get('reference_videos') %}
-        <h4 style="margin-bottom:12px;">Reference Videos</h4>
+        <h4 style="margin-bottom:12px;">참고할 영상</h4>
         {% for rv in latest_run.reference_videos %}
         <div class="card rec-card">
             <div class="card-title">{{ rv.title }}</div>
@@ -190,7 +272,7 @@
         {% endif %}
 
         {% if latest_run.get('recommended_channels') %}
-        <h4 style="margin:20px 0 12px;">Benchmark Channels</h4>
+        <h4 style="margin:20px 0 12px;">벤치마킹 채널</h4>
         {% for rc in latest_run.recommended_channels %}
         <div class="card rec-card">
             <div class="card-title">{{ rc.channel }}</div>
@@ -200,7 +282,7 @@
         {% endfor %}
         {% endif %}
         {% else %}
-        <p style="color:var(--dim);">No runs yet. Click "Run Agent" to start.</p>
+        <p style="color:var(--dim);">아직 실행 기록이 없습니다. "에이전트 실행" 버튼을 눌러주세요.</p>
         {% endif %}
     </div>
 </div>
@@ -235,11 +317,15 @@ function hideVideo(vid){
 function hideIdea(idx){
     fetch('/toggle_idea',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})}).then(()=>location.reload());
 }
+function removeChannel(name){
+    if(!confirm(name+' 채널을 삭제할까요?'))return;
+    fetch('/remove_channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(()=>location.reload());
+}
 function runAgent(){
-    if(!confirm('Run agent? (1-2 min)'))return;
+    if(!confirm('에이전트를 실행할까요? (1-2분 소요)'))return;
     const b=document.getElementById('runBtn');
-    b.textContent='Running...';b.disabled=true;
-    fetch('/run_agent',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message);location.reload();}).catch(()=>{b.textContent='Run Agent';b.disabled=false;});
+    b.textContent='실행 중...';b.disabled=true;
+    fetch('/run_agent',{method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message);location.reload();}).catch(()=>{b.textContent='에이전트 실행';b.disabled=false;});
 }
 </script>
 </body>

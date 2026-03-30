@@ -104,6 +104,8 @@ def index():
     # latest recommendations
     latest_run = runs[-1] if runs else {}
 
+    saved_channels = db.get("channels", [])
+
     return render_template("index.html",
         videos=sorted(videos, key=lambda x: x.get("views", 0), reverse=True),
         ideas=list(reversed(ideas)),
@@ -114,6 +116,7 @@ def index():
         hidden_ideas=hidden_ideas,
         latest_run=latest_run,
         runs=runs,
+        saved_channels=saved_channels,
     )
 
 
@@ -176,6 +179,71 @@ def toggle_idea():
         db["ideas"][idx]["hidden"] = not db["ideas"][idx].get("hidden", False)
     save_db(db)
     return jsonify({"ok": True})
+
+
+@app.route("/add_channel", methods=["POST"])
+def add_channel():
+    """채널 수동 추가 (YouTube URL 또는 채널명)"""
+    data = request.form if request.form else request.json or {}
+    channel_name = data.get("channel", "").strip()
+    category = data.get("category", "").strip()
+    note = data.get("note", "").strip()
+    if not channel_name:
+        return redirect("/")
+    db = load_db()
+    if "channels" not in db:
+        db["channels"] = []
+    # 중복 체크
+    existing = {c["name"].lower() for c in db["channels"]}
+    if channel_name.lower() not in existing:
+        db["channels"].append({
+            "name": channel_name,
+            "category": category or "Uncategorized",
+            "note": note,
+            "date_added": datetime.now().strftime("%Y-%m-%d"),
+        })
+        save_db(db)
+    return redirect("/")
+
+
+@app.route("/remove_channel", methods=["POST"])
+def remove_channel():
+    data = request.json
+    name = data.get("name", "")
+    db = load_db()
+    db["channels"] = [c for c in db.get("channels", []) if c["name"] != name]
+    save_db(db)
+    return jsonify({"ok": True})
+
+
+@app.route("/add_idea", methods=["POST"])
+def add_idea():
+    """아이디어 수동 추가"""
+    data = request.form if request.form else request.json or {}
+    title = data.get("title", "").strip()
+    fmt = data.get("format", "").strip()
+    slides = data.get("slides", "").strip()
+    hashtags = data.get("hashtags", "").strip()
+    bgm = data.get("bgm", "").strip()
+    reason = data.get("reason", "").strip()
+    if not title:
+        return redirect("/")
+    db = load_db()
+    db["ideas"].append({
+        "rank": 0,
+        "viral_potential": data.get("viral_potential", "Medium"),
+        "format": fmt,
+        "source_trend": "manual",
+        "title": title,
+        "slides": [s.strip() for s in slides.split("\n") if s.strip()] if slides else [],
+        "bgm": bgm,
+        "hashtags": [h.strip() for h in hashtags.split() if h.strip()],
+        "reason": reason,
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "hidden": False,
+    })
+    save_db(db)
+    return redirect("/")
 
 
 @app.route("/run_agent", methods=["POST"])

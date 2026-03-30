@@ -81,6 +81,7 @@
         <button class="tab active" data-tab="videos">영상</button>
         <button class="tab" data-tab="ideas">아이디어</button>
         <button class="tab" data-tab="channels">채널</button>
+        <button class="tab" data-tab="collect">수집 설정</button>
         <button class="tab" data-tab="recs">추천</button>
     </div>
 
@@ -271,6 +272,63 @@
         {% endfor %}
     </div>
 
+    <!-- 수집 설정 -->
+    <div id="collect" class="tab-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3 style="color:var(--neon);">수집 키워드 관리</h3>
+            <button class="btn btn-p" id="collectBtn" onclick="collectVideos()">전체 수집 실행</button>
+        </div>
+
+        <div class="add-form">
+            <form action="/add_query" method="POST" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+                <div style="flex:1;min-width:250px;">
+                    <label>검색 키워드</label>
+                    <input name="query" placeholder="예: kale chips recipe, Korean superfood" required>
+                </div>
+                <div style="min-width:150px;">
+                    <label>컨셉</label>
+                    <select name="concept" style="width:100%;">
+                        {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                        <option value="Etc">기타</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-p">+ 키워드 추가</button>
+            </form>
+        </div>
+
+        <div id="collectResult" style="display:none;margin-bottom:16px;padding:12px;background:var(--card);border:1px solid var(--neon);border-radius:8px;font-size:13px;white-space:pre-line;"></div>
+
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">
+            {% for q in search_queries %}
+            <div class="card" style="{% if not q.enabled %}opacity:0.4;{% endif %}">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div class="card-title" style="margin-bottom:4px;">{{ q.query }}</div>
+                        <span class="tag tag-g">{{ q.concept }}</span>
+                        {% if q.enabled %}
+                        <span class="tag" style="border-color:var(--neon);color:var(--neon);">활성</span>
+                        {% else %}
+                        <span class="tag" style="border-color:var(--red);color:var(--red);">비활성</span>
+                        {% endif %}
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn btn-sm" onclick="toggleQuery({{ q.id }})">
+                            {{ '끄기' if q.enabled else '켜기' }}
+                        </button>
+                        <button class="btn btn-sm btn-d" onclick="deleteQuery({{ q.id }})">삭제</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if not search_queries %}
+        <div class="card" style="text-align:center;color:var(--dim);padding:40px;">
+            검색 키워드가 없습니다. 위에서 추가해주세요.
+        </div>
+        {% endif %}
+    </div>
+
     <!-- 추천 -->
     <div id="recs" class="tab-content">
         {% if latest_run %}
@@ -337,6 +395,24 @@ function hideIdea(id){
 function removeChannel(name){
     if(!confirm(name+' 채널을 삭제할까요?'))return;
     fetch('/remove_channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(()=>location.reload());
+}
+function toggleQuery(id){
+    fetch('/toggle_query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>location.reload());
+}
+function deleteQuery(id){
+    if(!confirm('이 키워드를 삭제할까요?'))return;
+    fetch('/delete_query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(()=>location.reload());
+}
+function collectVideos(){
+    const b=document.getElementById('collectBtn');
+    b.textContent='수집 중...';b.disabled=true;
+    const res=document.getElementById('collectResult');
+    res.style.display='none';
+    fetch('/collect_videos',{method:'POST'}).then(r=>r.json()).then(d=>{
+        res.style.display='block';
+        res.textContent=d.message;
+        b.textContent='전체 수집 실행';b.disabled=false;
+    }).catch(()=>{b.textContent='전체 수집 실행';b.disabled=false;});
 }
 function runAgent(){
     if(!confirm('에이전트를 실행할까요? (1-2분 소요)'))return;

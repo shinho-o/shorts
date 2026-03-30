@@ -152,6 +152,7 @@ def index():
     all_ideas = s.table("ideas").select("*").execute().data
     runs = s.table("runs").select("*").order("id", desc=True).execute().data
     saved_channels = s.table("channels").select("*").execute().data
+    search_queries = s.table("search_queries").select("*").order("id").execute().data
 
     videos = [v for v in all_videos if not v.get("hidden")]
     hidden_count = sum(1 for v in all_videos if v.get("hidden"))
@@ -187,6 +188,7 @@ def index():
         latest_run=latest_run,
         runs=runs,
         saved_channels=saved_channels,
+        search_queries=search_queries,
     )
 
 
@@ -327,6 +329,120 @@ def import_video():
         "concept": concept, "hidden": False,
     }, on_conflict="video_id").execute()
     return jsonify({"ok": True})
+
+
+@app.route("/add_query", methods=["POST"])
+def add_query():
+    """수집 키워드 추가"""
+    data = request.form if request.form else request.json or {}
+    query = data.get("query", "").strip()
+    concept = data.get("concept", "Etc").strip()
+    if not query:
+        return redirect("/")
+    sb().table("search_queries").upsert(
+        {"query": query, "concept": concept, "enabled": True},
+        on_conflict="query"
+    ).execute()
+    return redirect("/")
+
+
+@app.route("/toggle_query", methods=["POST"])
+def toggle_query():
+    """수집 키워드 활성/비활성"""
+    data = request.json
+    qid = data.get("id")
+    s = sb()
+    row = s.table("search_queries").select("enabled").eq("id", qid).execute().data
+    if row:
+        s.table("search_queries").update({"enabled": not row[0]["enabled"]}).eq("id", qid).execute()
+    return jsonify({"ok": True})
+
+
+@app.route("/delete_query", methods=["POST"])
+def delete_query():
+    data = request.json
+    qid = data.get("id")
+    sb().table("search_queries").delete().eq("id", qid).execute()
+    return jsonify({"ok": True})
+
+
+@app.route("/collect_videos", methods=["POST"])
+def collect_videos():
+    """활성 키워드로 YouTube 영상 일괄 수집"""
+    if not YOUTUBE_API_KEY:
+        return jsonify({"message": "YouTube API key missing"}), 400
+
+    s = sb()
+    queries = s.table("search_queries").select("*").eq("enabled", True).execute().data
+    if not queries:
+        return jsonify({"message": "No active queries", "collected": 0})
+
+    youtube = _yt()
+    today = datetime.now().strftime("%Y-%m-%d")
+    from_date = (datetime.now().replace(day=max(1, datetime.now().day - 7))).strftime("%Y-%m-%dT00:00:00Z")
+
+    total_collected = 0
+    results_by_query = []
+
+    for q in queries:
+        try:
+            response = youtube.search().list(
+                q=q["query"], part="snippet", type="video",
+                order="viewCount", maxResults=5,
+                publishedAfter=from_date,
+                videoDuration="short", regionCode="US",
+            ).execute()
+
+            video_ids = [item["id"]["videoId"] for item in response.get("items", [])]
+            if not video_ids:
+                results_by_query.append({"query": q["query"], "count": 0})
+                continue
+
+            stats_resp = youtube.videos().list(
+                part="statistics", id=",".join(video_ids)
+            ).execute()
+            stats = {}
+            for v in stats_resp.get("items", []):
+                st = v["statistics"]
+                stats[v["id"]] = {
+                    "views": int(st.get("viewCount", 0)),
+                    "likes": int(st.get("likeCount", 0)),
+                    "comments": int(st.get("commentCount", 0)),
+                }
+
+            rows = []
+            for item in response.get("items", []):
+                vid = item["id"]["videoId"]
+                st = stats.get(vid, {"views": 0, "likes": 0, "comments": 0})
+                rows.append({
+                    "video_id": vid,
+                    "title": item["snippet"]["title"],
+                    "channel": item["snippet"]["channelTitle"],
+                    "views": st["views"],
+                    "likes": st["likes"],
+                    "comments": st["comments"],
+                    "query": q["query"],
+                    "published": item["snippet"]["publishedAt"][:10],
+                    "date_collected": today,
+                    "concept": q.get("concept", "Etc"),
+                    "hidden": False,
+                })
+
+            if rows:
+                s.table("videos").upsert(rows, on_conflict="video_id").execute()
+                total_collected += len(rows)
+
+            results_by_query.append({"query": q["query"], "count": len(rows)})
+
+        except Exception as e:
+            results_by_query.append({"query": q["query"], "count": 0, "error": str(e)[:100]})
+
+    summary = ", ".join([f"{r['query']}: {r['count']}" for r in results_by_query])
+    return jsonify({
+        "message": f"{total_collected}개 영상 수집 완료!\n{summary}",
+        "collected": total_collected,
+        "details": results_by_query,
+    })
 
 
 @app.route("/run_agent", methods=["POST"])

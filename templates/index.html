@@ -385,6 +385,7 @@
         <!-- API 사용량 -->
         <h4 style="color:var(--neon);margin:24px 0 12px;">API 사용량</h4>
         <div style="display:flex;gap:16px;margin-bottom:12px;">
+            <div class="card" style="flex:1;text-align:center;"><div style="font-size:1.8em;font-weight:700;{% if claude_balance < 1 %}color:var(--red);{% else %}color:var(--neon);{% endif %}">${{ "%.2f"|format(claude_balance) }}</div><div style="font-size:12px;color:var(--dim);">Claude 잔액</div></div>
             <div class="card" style="flex:1;text-align:center;"><div style="font-size:1.5em;font-weight:700;color:var(--neon);">{{ total_calls }}</div><div style="font-size:12px;color:var(--dim);">AI 호출</div></div>
             <div class="card" style="flex:1;text-align:center;"><div style="font-size:1.5em;font-weight:700;color:var(--neon);">${{ "%.4f"|format(total_cost) }}</div><div style="font-size:12px;color:var(--dim);">총 비용</div></div>
         </div>

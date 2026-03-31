@@ -14,10 +14,91 @@ load_dotenv(Path(__file__).parent / ".env")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+
+CHANNEL_CACHE_PATH = Path(__file__).parent / "data" / "channel_cache.json"
 
 
-def extract_features(video: dict) -> dict:
-    """영상 메타데이터에서 예측용 피처 추출"""
+def _load_channel_cache() -> dict:
+    """채널 구독자 수 캐시 로드"""
+    if CHANNEL_CACHE_PATH.exists():
+        with open(CHANNEL_CACHE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_channel_cache(cache: dict):
+    """채널 구독자 수 캐시 저장"""
+    CHANNEL_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CHANNEL_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2, ensure_ascii=False)
+
+
+def fetch_subscriber_counts(channel_names: list[str]) -> dict[str, int]:
+    """YouTube API로 채널 구독자 수 조회 (캐시 활용)
+
+    Args:
+        channel_names: 채널명 리스트
+
+    Returns:
+        {channel_name: subscriber_count} 딕셔너리
+    """
+    cache = _load_channel_cache()
+    missing = [ch for ch in channel_names if ch not in cache]
+
+    if missing and YOUTUBE_API_KEY:
+        try:
+            from googleapiclient.discovery import build
+            youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+
+            # 채널명으로 검색 후 구독자 수 가져오기 (배치로 처리)
+            for ch_name in missing:
+                try:
+                    search_resp = youtube.search().list(
+                        part="snippet",
+                        q=ch_name,
+                        type="channel",
+                        maxResults=1,
+                    ).execute()
+
+                    if not search_resp.get("items"):
+                        cache[ch_name] = 0
+                        continue
+
+                    channel_id = search_resp["items"][0]["snippet"]["channelId"]
+                    ch_resp = youtube.channels().list(
+                        part="statistics",
+                        id=channel_id,
+                    ).execute()
+
+                    if ch_resp.get("items"):
+                        sub_count = int(ch_resp["items"][0]["statistics"].get("subscriberCount", 0))
+                        cache[ch_name] = sub_count
+                    else:
+                        cache[ch_name] = 0
+                except Exception as e:
+                    print(f"[WARN] Failed to fetch subs for '{ch_name}': {e}")
+                    cache[ch_name] = 0
+
+            _save_channel_cache(cache)
+        except ImportError:
+            print("[WARN] googleapiclient not installed, skipping subscriber fetch")
+        except Exception as e:
+            print(f"[WARN] YouTube API error: {e}")
+
+    elif missing and not YOUTUBE_API_KEY:
+        print(f"[WARN] YOUTUBE_API_KEY not set, {len(missing)} channels have no subscriber data")
+
+    return {ch: cache.get(ch, 0) for ch in channel_names}
+
+
+def extract_features(video: dict, subscriber_count: int = 0) -> dict:
+    """영상 메타데이터에서 예측용 피처 추출
+
+    Args:
+        video: 영상 메타데이터 딕셔너리
+        subscriber_count: 채널 구독자 수 (0이면 미제공)
+    """
     title = video.get("title", "")
 
     # 제목 피처
@@ -44,6 +125,9 @@ def extract_features(video: dict) -> dict:
     concepts = ["Kale Chips", "Smart Farm", "Health Meme", "Looksmaxxing", "Superfood", "K-Food", "Hydroponics"]
     concept_features = {f"concept_{c.lower().replace(' ', '_')}": 1 if concept == c else 0 for c in concepts}
 
+    # 구독자 수 피처 (log scale로 변환, 0이면 0)
+    log_subscribers = round(math.log10(subscriber_count + 1), 3)
+
     features = {
         "title_len": title_len,
         "word_count": word_count,
@@ -59,6 +143,7 @@ def extract_features(video: dict) -> dict:
         "has_emotional": has_emotional,
         "has_pov": has_pov,
         "has_asmr": has_asmr,
+        "log_subscribers": log_subscribers,
         **concept_features,
     }
     return features
@@ -98,6 +183,13 @@ def train_model():
         print(f"[SKIP] Not enough data ({len(videos)} videos, need 20+)")
         return None
 
+    # 채널별 구독자 수 조회
+    unique_channels = list({v.get("channel", "") for v in videos if v.get("channel")})
+    print(f"[SUBS] Fetching subscriber counts for {len(unique_channels)} channels...")
+    sub_counts = fetch_subscriber_counts(unique_channels)
+    cached_count = sum(1 for c in unique_channels if sub_counts.get(c, 0) > 0)
+    print(f"[SUBS] {cached_count}/{len(unique_channels)} channels have subscriber data")
+
     # 피처 추출
     feature_names = None
     X_list = []
@@ -106,7 +198,9 @@ def train_model():
     for v in videos:
         if v.get("views", 0) == 0:
             continue
-        feats = extract_features(v)
+        channel = v.get("channel", "")
+        subs = sub_counts.get(channel, 0)
+        feats = extract_features(v, subscriber_count=subs)
         if feature_names is None:
             feature_names = sorted(feats.keys())
         X_list.append([feats[f] for f in feature_names])
@@ -149,8 +243,14 @@ def train_model():
     return model, feature_names
 
 
-def predict(title: str, concept: str = "Etc") -> dict:
-    """제목과 컨셉으로 조회수 등급 예측"""
+def predict(title: str, concept: str = "Etc", subscriber_count: int = 0) -> dict:
+    """제목과 컨셉으로 조회수 등급 예측
+
+    Args:
+        title: 영상 제목
+        concept: 컨셉 카테고리
+        subscriber_count: 채널 구독자 수 (0이면 모델이 구독자 정보 없이 예측)
+    """
     import pickle
 
     model_path = Path(__file__).parent / "data" / "model.pkl"
@@ -164,7 +264,7 @@ def predict(title: str, concept: str = "Etc") -> dict:
     feature_names = data["feature_names"]
 
     video = {"title": title, "concept": concept}
-    feats = extract_features(video)
+    feats = extract_features(video, subscriber_count=subscriber_count)
     X = np.array([[feats[f] for f in feature_names]])
 
     # 예측
@@ -208,16 +308,16 @@ if __name__ == "__main__":
         print("=" * 50)
 
         tests = [
-            ("How to make crispy kale chips at home", "Kale Chips"),
-            ("POV: Your kale is monitored by IoT sensors 24/7", "Smart Farm"),
-            ("Average grocery kale vs IoT-grown kale enjoyer", "Looksmaxxing"),
-            ("Korean superfood that changed my skin forever", "K-Food"),
-            ("Hydroponic farm tour - growing 1000 plants", "Hydroponics"),
+            ("How to make crispy kale chips at home", "Kale Chips", 5000),
+            ("POV: Your kale is monitored by IoT sensors 24/7", "Smart Farm", 1200),
+            ("Average grocery kale vs IoT-grown kale enjoyer", "Looksmaxxing", 50000),
+            ("Korean superfood that changed my skin forever", "K-Food", 200000),
+            ("Hydroponic farm tour - growing 1000 plants", "Hydroponics", 0),
         ]
 
-        for title, concept in tests:
-            result = predict(title, concept)
-            print(f"\n  \"{title}\"")
+        for title, concept, subs in tests:
+            result = predict(title, concept, subscriber_count=subs)
+            print(f"\n  \"{title}\" (subs: {subs:,})")
             print(f"  Tier: {result['tier']} ({result['confidence']}%)")
             print(f"  Range: {result['estimated_range']}")
             print(f"  Proba: {result['probabilities']}")

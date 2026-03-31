@@ -141,6 +141,7 @@
                         {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
                     </select>
                 </div>
+                <div style="max-width:150px;"><input id="predSubs" type="number" placeholder="구독자 수" value="0" oninput="debouncedPredict()" style="width:100%;"></div>
             </div>
             <div id="predResult" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:rgba(57,255,20,.08);border:1px solid var(--neon);">
                 <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
@@ -440,9 +441,10 @@ function debouncedPredict(){ clearTimeout(predTimer); predTimer=setTimeout(runPr
 function runPredict(){
     const title=document.getElementById('predTitle').value.trim();
     const concept=document.getElementById('predConcept').value;
+    const subs=parseInt(document.getElementById('predSubs').value)||0;
     const res=document.getElementById('predResult');
     if(!title){res.style.display='none';return;}
-    fetch('/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,concept})})
+    fetch('/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,concept,subscriber_count:subs})})
     .then(r=>r.json()).then(d=>{
         if(d.error){res.style.display='none';return;}
         res.style.display='block';

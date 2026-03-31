@@ -451,10 +451,11 @@ def predict_views():
     data = request.json or {}
     title = data.get("title", "").strip()
     concept = data.get("concept", "Etc")
+    subscriber_count = data.get("subscriber_count", 0)
     if not title:
         return jsonify({"error": "title required"}), 400
     from predictor import predict
-    result = predict(title, concept)
+    result = predict(title, concept, subscriber_count=subscriber_count)
     return jsonify(result)
 
 

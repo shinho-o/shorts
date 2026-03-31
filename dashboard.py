@@ -20,6 +20,24 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 app = Flask(__name__)
 
+PRICING = {
+    "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+    "gemini-2.5-flash": {"input": 0.0, "output": 0.0},
+}
+
+def log_usage(service, model, endpoint, tokens_in=0, tokens_out=0, project="shorts"):
+    cost = 0
+    if model in PRICING:
+        cost = (tokens_in * PRICING[model]["input"] + tokens_out * PRICING[model]["output"]) / 1_000_000
+    try:
+        sb().table("api_usage").insert({
+            "service": service, "model": model, "endpoint": endpoint,
+            "tokens_in": tokens_in, "tokens_out": tokens_out,
+            "cost_usd": round(cost, 6), "project": project,
+        }).execute()
+    except Exception:
+        pass
+
 CONCEPT_MAP = {
     "kale chips recipe": "Kale Chips",
     "smart farm IoT": "Smart Farm",
@@ -176,6 +194,7 @@ def index():
     concepts = list(CONCEPT_MAP.values())
     total_views = sum(v.get("views", 0) for v in videos)
     latest_run = runs[0] if runs else {}
+    usage = s.table("api_usage").select("*").order("id", desc=True).limit(50).execute().data
 
     return render_template("index.html",
         videos=sorted(videos, key=lambda x: x.get("views", 0), reverse=True),
@@ -189,6 +208,9 @@ def index():
         runs=runs,
         saved_channels=saved_channels,
         search_queries=search_queries,
+        usage=usage,
+        total_cost=round(sum(u.get("cost_usd", 0) or 0 for u in usage), 4),
+        total_calls=len(usage),
     )
 
 

@@ -381,6 +381,35 @@
         {% else %}
         <p style="color:var(--dim);">아직 실행 기록이 없습니다. "에이전트 실행" 버튼을 눌러주세요.</p>
         {% endif %}
+
+        <!-- API 사용량 -->
+        <h4 style="color:var(--neon);margin:24px 0 12px;">API 사용량</h4>
+        <div style="display:flex;gap:16px;margin-bottom:12px;">
+            <div class="card" style="flex:1;text-align:center;"><div style="font-size:1.5em;font-weight:700;color:var(--neon);">{{ total_calls }}</div><div style="font-size:12px;color:var(--dim);">AI 호출</div></div>
+            <div class="card" style="flex:1;text-align:center;"><div style="font-size:1.5em;font-weight:700;color:var(--neon);">${{ "%.4f"|format(total_cost) }}</div><div style="font-size:12px;color:var(--dim);">총 비용</div></div>
+        </div>
+        {% if usage %}
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="border-bottom:1px solid var(--border);text-align:left;">
+                    <th style="padding:6px;color:var(--dim);">시간</th>
+                    <th style="padding:6px;color:var(--dim);">서비스</th>
+                    <th style="padding:6px;color:var(--dim);">모델</th>
+                    <th style="padding:6px;color:var(--dim);">용도</th>
+                    <th style="padding:6px;color:var(--dim);">토큰</th>
+                    <th style="padding:6px;color:var(--dim);">비용</th>
+                </tr></thead>
+                <tbody>{% for u in usage %}<tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:6px;">{{ u.created_at[:16] if u.created_at else '' }}</td>
+                    <td style="padding:6px;"><span class="tag {% if u.service == 'gemini' %}tag-b{% else %}tag-g{% endif %}">{{ u.service }}</span></td>
+                    <td style="padding:6px;color:var(--dim);">{{ u.model }}</td>
+                    <td style="padding:6px;">{{ u.endpoint }}</td>
+                    <td style="padding:6px;">{{ "{:,}".format(u.tokens_in or 0) }}/{{ "{:,}".format(u.tokens_out or 0) }}</td>
+                    <td style="padding:6px;">${{ "%.4f"|format(u.cost_usd or 0) }}</td>
+                </tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        {% endif %}
     </div>
 </div>
 

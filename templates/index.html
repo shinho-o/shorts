@@ -131,6 +131,27 @@
 
     <!-- 아이디어 -->
     <div id="ideas" class="tab-content">
+        <!-- 조회수 예측 -->
+        <div class="add-form" style="border-color:var(--neon);margin-bottom:16px;">
+            <h3 style="color:var(--neon);margin-bottom:12px;">조회수 예측</h3>
+            <div class="form-row">
+                <div style="flex:2;"><input id="predTitle" placeholder="제목을 입력하면 예상 조회수를 알려드려요" oninput="debouncedPredict()"></div>
+                <div style="max-width:150px;">
+                    <select id="predConcept" onchange="runPredict()">
+                        {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div id="predResult" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:rgba(57,255,20,.08);border:1px solid var(--neon);">
+                <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+                    <div><span style="font-size:12px;color:var(--dim);">예측 등급</span><div id="predTier" style="font-size:1.5em;font-weight:700;color:var(--neon);"></div></div>
+                    <div><span style="font-size:12px;color:var(--dim);">예상 조회수</span><div id="predRange" style="font-size:1.2em;font-weight:600;"></div></div>
+                    <div><span style="font-size:12px;color:var(--dim);">확신도</span><div id="predConf" style="font-size:1.2em;font-weight:600;"></div></div>
+                </div>
+                <div id="predBars" style="margin-top:10px;display:flex;gap:6px;"></div>
+            </div>
+        </div>
+
         <div class="add-form">
             <h3 style="color:var(--neon);margin-bottom:12px;">+ 아이디어 추가</h3>
             <form action="/add_idea" method="POST">
@@ -413,6 +434,34 @@ function collectVideos(){
         res.textContent=d.message;
         b.textContent='전체 수집 실행';b.disabled=false;
     }).catch(()=>{b.textContent='전체 수집 실행';b.disabled=false;});
+}
+let predTimer;
+function debouncedPredict(){ clearTimeout(predTimer); predTimer=setTimeout(runPredict, 400); }
+function runPredict(){
+    const title=document.getElementById('predTitle').value.trim();
+    const concept=document.getElementById('predConcept').value;
+    const res=document.getElementById('predResult');
+    if(!title){res.style.display='none';return;}
+    fetch('/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,concept})})
+    .then(r=>r.json()).then(d=>{
+        if(d.error){res.style.display='none';return;}
+        res.style.display='block';
+        const colors={low:'#FF4444',medium:'#FFD700',high:'#00F5FF',viral:'#39FF14'};
+        document.getElementById('predTier').textContent=d.tier.toUpperCase();
+        document.getElementById('predTier').style.color=colors[d.tier];
+        document.getElementById('predRange').textContent=d.estimated_range;
+        document.getElementById('predConf').textContent=d.confidence+'%';
+        const bars=document.getElementById('predBars');
+        bars.innerHTML='';
+        for(const[tier,pct] of Object.entries(d.probabilities)){
+            bars.innerHTML+=`<div style="flex:1;text-align:center;">
+                <div style="height:40px;background:var(--border);border-radius:4px;position:relative;overflow:hidden;">
+                    <div style="position:absolute;bottom:0;width:100%;height:${pct}%;background:${colors[tier]};border-radius:4px;"></div>
+                </div>
+                <div style="font-size:10px;color:var(--dim);margin-top:4px;">${tier}<br>${pct}%</div>
+            </div>`;
+        }
+    });
 }
 function runAgent(){
     if(!confirm('에이전트를 실행할까요? (1-2분 소요)'))return;

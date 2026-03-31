@@ -445,6 +445,32 @@ def collect_videos():
     })
 
 
+@app.route("/predict", methods=["POST"])
+def predict_views():
+    """제목으로 조회수 예측"""
+    data = request.json or {}
+    title = data.get("title", "").strip()
+    concept = data.get("concept", "Etc")
+    if not title:
+        return jsonify({"error": "title required"}), 400
+    from predictor import predict
+    result = predict(title, concept)
+    return jsonify(result)
+
+
+@app.route("/retrain", methods=["POST"])
+def retrain_model():
+    """모델 재학습"""
+    from predictor import train_model
+    try:
+        result = train_model()
+        if result:
+            return jsonify({"message": "Model retrained!"})
+        return jsonify({"message": "Not enough data"})
+    except Exception as e:
+        return jsonify({"message": str(e)})
+
+
 @app.route("/run_agent", methods=["POST"])
 def run_agent_route():
     try:

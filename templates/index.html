@@ -141,7 +141,7 @@
                         {% for c in concepts %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
                     </select>
                 </div>
-                <div style="max-width:150px;"><input id="predSubs" type="number" placeholder="구독자 수" value="0" oninput="debouncedPredict()" style="width:100%;"></div>
+                <div style="max-width:150px;"><input id="predSubs" type="number" placeholder="채널 구독자 수 입력" value="" oninput="debouncedPredict()" style="width:100%;"></div>
             </div>
             <div id="predResult" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:rgba(57,255,20,.08);border:1px solid var(--neon);">
                 <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">

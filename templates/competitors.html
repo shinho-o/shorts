@@ -142,7 +142,7 @@
             <div class="card-top">
                 <div>
                     <h3>{{ c.name }}</h3>
-                    <div class="flag">{{ c.country }} · {{ c.city }} · {{ c.founded }}</div>
+                    <div class="flag">{{ c.country }}{% if c.city %} · {{ c.city }}{% endif %}{% if c.founded %} · {{ c.founded }}{% endif %}</div>
                 </div>
                 <span class="status {{ c.status }}">{{ STATUS_LABEL[c.status] }}</span>
             </div>

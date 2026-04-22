@@ -73,7 +73,7 @@
         {% if threat %}<span class="threat {{ threat }}">threat: {{ threat }}</span>{% endif %}
     </h1>
     <div class="sub">
-        {{ c.country }} · {{ c.city }} · 설립 {{ c.founded }}
+        {{ c.country }}{% if c.city %} · {{ c.city }}{% endif %}{% if c.founded %} · 설립 {{ c.founded }}{% endif %}
         {% if c.url %} · <a class="url" href="{{ c.url }}" target="_blank" rel="noopener">{{ c.url }}</a>{% endif %}
     </div>
 

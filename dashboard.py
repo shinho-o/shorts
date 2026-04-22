@@ -1,5 +1,5 @@
 """
-Farmetry Dashboard — Supabase DB 기반 웹 대시보드
+Farmetry Dashboard — 경쟁사 자동 분석 사이트 (메인) + 쇼츠 에이전트 (/shorts).
 """
 import os
 import json
@@ -10,6 +10,8 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect
 from dotenv import load_dotenv
 from supabase import create_client
+
+import competitors_service as competitors
 
 SCRIPT_DIR = Path(__file__).parent
 load_dotenv(SCRIPT_DIR / ".env")
@@ -164,7 +166,43 @@ def fetch_channel_videos(channel_id, max_results=12):
 # ── Routes ──
 
 @app.route("/")
-def index():
+@app.route("/competitors")
+def competitors_index():
+    country = request.args.get("country") or None
+    status = request.args.get("status") or None
+    category = request.args.get("category") or None
+    rows = competitors.filtered(country=country, status=status, category=category)
+    return render_template(
+        "competitors.html",
+        competitors=rows,
+        summary=competitors.summary(),
+        country=country, status=status, category=category,
+        STATUS_LABEL=competitors.STATUS_LABEL,
+        CATEGORY_LABEL=competitors.CATEGORY_LABEL,
+    )
+
+
+@app.route("/competitors/<cid>")
+def competitor_detail(cid):
+    c = competitors.by_id(cid)
+    if not c:
+        return "Not found", 404
+    summary = competitors.get_summary(cid)
+    news = competitors.get_news(cid)
+    threat = (summary or {}).get("frontmatter", {}).get("threat") if summary else None
+    return render_template(
+        "competitor_detail.html",
+        c=c,
+        summary=summary,
+        news=news,
+        threat=threat,
+        STATUS_LABEL=competitors.STATUS_LABEL,
+        CATEGORY_LABEL=competitors.CATEGORY_LABEL,
+    )
+
+
+@app.route("/shorts")
+def shorts_index():
     s = sb()
     all_videos = s.table("videos").select("*").execute().data
     all_ideas = s.table("ideas").select("*").execute().data

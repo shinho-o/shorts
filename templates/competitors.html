@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FARMETRY · 경쟁사 대시보드</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+            background:#07131a;color:#e5efe9;min-height:100vh;
+        }
+        .wrap{max-width:1280px;margin:0 auto;padding:28px 20px}
+        header h1{font-size:1.6em;letter-spacing:-.02em;color:#7dffb8}
+        header p{color:#6fa089;font-size:.9em;margin-top:4px}
+        .kpis{
+            display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+            gap:12px;margin:24px 0;
+        }
+        .kpi{
+            background:#0d1f2a;border:1px solid #1a3344;
+            padding:16px;border-radius:12px;
+        }
+        .kpi-label{font-size:.75em;color:#6fa089;letter-spacing:.05em;text-transform:uppercase}
+        .kpi-value{font-size:1.8em;font-weight:700;color:#7dffb8;margin-top:6px}
+        .kpi-sub{font-size:.75em;color:#8cb8a1;margin-top:4px}
+        .filters{
+            display:flex;gap:12px;flex-wrap:wrap;
+            margin:20px 0;padding:14px;
+            background:#0d1f2a;border-radius:10px;border:1px solid #1a3344;
+        }
+        .filter-group{display:flex;align-items:center;gap:8px}
+        .filter-label{font-size:.8em;color:#6fa089}
+        select{
+            background:#07131a;color:#e5efe9;border:1px solid #1a3344;
+            padding:6px 10px;border-radius:6px;font-size:.85em;
+        }
+        .grid{
+            display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+            gap:14px;
+        }
+        .card{
+            background:#0d1f2a;border:1px solid #1a3344;border-radius:12px;
+            padding:18px;transition:border-color .2s,transform .1s;
+            text-decoration:none;color:inherit;display:block;
+        }
+        .card:hover{border-color:#5eead4;transform:translateY(-2px)}
+        .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+        .card h3{font-size:1.1em;color:#fff;letter-spacing:-.01em}
+        .flag{font-size:.75em;color:#6fa089}
+        .status{
+            font-size:.7em;padding:3px 8px;border-radius:20px;
+            font-weight:600;white-space:nowrap;
+        }
+        .status.growth{background:#0c5c3e;color:#7dffb8}
+        .status.stable,.status.profitable{background:#1e4066;color:#9ecfff}
+        .status.pivot{background:#6b4e13;color:#ffd57a}
+        .status.restructured,.status.administration,.status.for_sale{background:#7a3a0f;color:#ff9c5a}
+        .status.defunct{background:#5a1313;color:#ff7a7a}
+        .meta{
+            font-size:.78em;color:#8cb8a1;margin-top:10px;line-height:1.5;
+        }
+        .meta-row{display:flex;justify-content:space-between;padding:2px 0}
+        .meta-label{color:#6fa089}
+        .tag{
+            display:inline-block;font-size:.7em;padding:2px 8px;
+            background:#1a3344;color:#9ed9c3;border-radius:12px;margin-top:8px;
+        }
+        .diff{
+            font-size:.82em;color:#c5e0d2;margin-top:10px;
+            padding-top:10px;border-top:1px solid #1a3344;line-height:1.5;
+        }
+        .url{display:inline-block;font-size:.75em;color:#5eead4;margin-top:8px;text-decoration:none}
+        .url:hover{text-decoration:underline}
+        footer{text-align:center;color:#4a7563;font-size:.75em;margin-top:40px;padding:20px}
+        footer a{color:#6fa089;text-decoration:none}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <h1>FARMETRY · Competitor Dashboard</h1>
+        <p>해외 수직농장 · CEA 스타트업 {{ summary.total }}개사 자동 분석 · 최종 업데이트 {{ summary.updated }}</p>
+    </header>
+
+    <div class="kpis">
+        <div class="kpi">
+            <div class="kpi-label">Total Tracked</div>
+            <div class="kpi-value">{{ summary.total }}</div>
+            <div class="kpi-sub">{{ summary.countries|length }} countries</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Cumulative Funding</div>
+            <div class="kpi-value">${{ "{:,}".format(summary.funding_total_m) }}M</div>
+            <div class="kpi-sub">max ${{ summary.funding_max_m }}M (Plenty)</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">At-risk Companies</div>
+            <div class="kpi-value">{{ summary.at_risk }}</div>
+            <div class="kpi-sub">pivot / admin / defunct</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Top Category</div>
+            <div class="kpi-value">{{ summary.category[0][0] }}</div>
+            <div class="kpi-sub">{{ summary.category[0][1] }} companies</div>
+        </div>
+    </div>
+
+    <form class="filters" method="get">
+        <div class="filter-group">
+            <span class="filter-label">Country</span>
+            <select name="country" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for code, count in summary.countries %}
+                <option value="{{ code }}" {% if country==code %}selected{% endif %}>{{ code }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">Status</span>
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for s, count in summary.status %}
+                <option value="{{ s }}" {% if status==s %}selected{% endif %}>{{ STATUS_LABEL[s] }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">Category</span>
+            <select name="category" onchange="this.form.submit()">
+                <option value="">All</option>
+                {% for c, count in summary.category %}
+                <option value="{{ c }}" {% if category==c %}selected{% endif %}>{{ CATEGORY_LABEL[c] }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+
+    <div class="grid">
+        {% for c in competitors %}
+        <a class="card" href="/competitors/{{ c.id }}">
+            <div class="card-top">
+                <div>
+                    <h3>{{ c.name }}</h3>
+                    <div class="flag">{{ c.country }} · {{ c.city }} · {{ c.founded }}</div>
+                </div>
+                <span class="status {{ c.status }}">{{ STATUS_LABEL[c.status] }}</span>
+            </div>
+
+            <div class="meta">
+                <div class="meta-row"><span class="meta-label">투자금</span><span>{% if c.funding_usd_m %}${{ c.funding_usd_m }}M{% else %}—{% endif %}</span></div>
+                <div class="meta-row"><span class="meta-label">주력작물</span><span>{{ c.crop }}</span></div>
+            </div>
+
+            <span class="tag">{{ CATEGORY_LABEL[c.category] }}</span>
+
+            <div class="diff">{{ c.differentiator }}</div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <footer>
+        FARMETRY · 경쟁사 자동 분석 | 뉴스 크롤링 + Claude 요약은 다음 단계 · <a href="/shorts">← 쇼츠 에이전트</a>
+    </footer>
+</div>
+</body>
+</html>

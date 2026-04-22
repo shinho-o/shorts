@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ c.name }} · FARMETRY</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+             background:#07131a;color:#e5efe9;min-height:100vh}
+        .wrap{max-width:960px;margin:0 auto;padding:28px 20px}
+        .back{color:#6fa089;font-size:.85em;text-decoration:none}
+        .back:hover{color:#7dffb8}
+        h1{font-size:1.8em;color:#7dffb8;letter-spacing:-.02em;margin-top:12px}
+        .sub{color:#8cb8a1;font-size:.9em;margin-top:6px}
+        .status{
+            display:inline-block;font-size:.7em;padding:3px 10px;border-radius:20px;
+            font-weight:600;margin-left:8px;vertical-align:middle;
+        }
+        .status.growth{background:#0c5c3e;color:#7dffb8}
+        .status.stable,.status.profitable{background:#1e4066;color:#9ecfff}
+        .status.pivot{background:#6b4e13;color:#ffd57a}
+        .status.restructured,.status.administration,.status.for_sale{background:#7a3a0f;color:#ff9c5a}
+        .status.defunct{background:#5a1313;color:#ff7a7a}
+        .threat{
+            display:inline-block;font-size:.7em;padding:3px 10px;border-radius:20px;
+            font-weight:600;margin-left:8px;
+        }
+        .threat.low{background:#0c5c3e;color:#7dffb8}
+        .threat.medium{background:#6b4e13;color:#ffd57a}
+        .threat.high{background:#5a1313;color:#ff7a7a}
+        .threat.unknown{background:#1a3344;color:#8cb8a1}
+
+        .panel{
+            background:#0d1f2a;border:1px solid #1a3344;border-radius:12px;
+            padding:20px;margin-top:20px;
+        }
+        .panel h2{font-size:1em;color:#5eead4;letter-spacing:.05em;
+                  text-transform:uppercase;margin-bottom:14px}
+
+        .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+        .meta-item{background:#07131a;padding:12px;border-radius:8px}
+        .meta-label{font-size:.7em;color:#6fa089;text-transform:uppercase}
+        .meta-value{font-size:1em;color:#e5efe9;margin-top:4px}
+
+        .summary-body{
+            white-space:pre-wrap;line-height:1.7;font-size:.95em;color:#c5e0d2;
+        }
+        .summary-body h2,.summary-body h3{
+            color:#7dffb8;font-size:1em;margin:14px 0 6px;
+        }
+
+        .news-item{
+            padding:12px 0;border-bottom:1px solid #1a3344;
+        }
+        .news-item:last-child{border-bottom:none}
+        .news-title a{color:#9ecfff;text-decoration:none;font-weight:500}
+        .news-title a:hover{color:#5eead4}
+        .news-meta{font-size:.75em;color:#6fa089;margin-top:3px}
+        .news-summary{font-size:.85em;color:#8cb8a1;margin-top:5px;line-height:1.5}
+
+        .empty{color:#6fa089;font-size:.9em;padding:20px;text-align:center}
+
+        a.url{color:#5eead4;font-size:.85em}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <a class="back" href="/">← 전체 경쟁사 리스트</a>
+    <h1>
+        {{ c.name }}
+        <span class="status {{ c.status }}">{{ STATUS_LABEL[c.status] }}</span>
+        {% if threat %}<span class="threat {{ threat }}">threat: {{ threat }}</span>{% endif %}
+    </h1>
+    <div class="sub">
+        {{ c.country }} · {{ c.city }} · 설립 {{ c.founded }}
+        {% if c.url %} · <a class="url" href="{{ c.url }}" target="_blank" rel="noopener">{{ c.url }}</a>{% endif %}
+    </div>
+
+    <div class="panel">
+        <h2>Profile</h2>
+        <div class="meta">
+            <div class="meta-item"><div class="meta-label">투자금</div>
+                <div class="meta-value">{% if c.funding_usd_m %}${{ c.funding_usd_m }}M{% else %}—{% endif %}</div></div>
+            <div class="meta-item"><div class="meta-label">주력작물</div>
+                <div class="meta-value">{{ c.crop }}</div></div>
+            <div class="meta-item"><div class="meta-label">카테고리</div>
+                <div class="meta-value">{{ CATEGORY_LABEL[c.category] }}</div></div>
+            <div class="meta-item"><div class="meta-label">차별화</div>
+                <div class="meta-value">{{ c.differentiator }}</div></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Farmetry 관점 분석 {% if summary and summary.frontmatter.generated_at %}<span style="font-size:.7em;color:#6fa089;text-transform:none">· {{ summary.frontmatter.generated_at[:10] }}</span>{% endif %}</h2>
+        {% if summary %}
+            <div class="summary-body">{{ summary.body }}</div>
+        {% else %}
+            <div class="empty">아직 Claude 요약이 생성되지 않았습니다. <code style="color:#7dffb8">python news_crawler.py --id {{ c.id }}</code></div>
+        {% endif %}
+    </div>
+
+    <div class="panel">
+        <h2>Recent News {% if news.updated_at %}<span style="font-size:.7em;color:#6fa089;text-transform:none">· updated {{ news.updated_at[:16] }}</span>{% endif %}</h2>
+        {% if news.items %}
+            {% for n in news.items %}
+            <div class="news-item">
+                <div class="news-title"><a href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a></div>
+                <div class="news-meta">{{ n.source }}{% if n.published %} · {{ n.published[:16] }}{% endif %}</div>
+                {% if n.summary %}<div class="news-summary">{{ n.summary }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">아직 뉴스 데이터가 없습니다.</div>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>
